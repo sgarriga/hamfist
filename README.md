@@ -5,15 +5,14 @@ At least that's the plan...<br>
 Right now characters are converted to a visual representation while I figure out the audio
 
 ## Usage
-`
-Usage:
-./fist {options}<br>
-Options:<br>
-  -h        show this information<br>
-  -v        verbose (show dit/dah encoding)<br>
-  -m keymap use specified file as a keymap<br>
-  -t tone   specify tone frequency (default ?)<br>
-`<br>
+`Usage:`<br>
+`./fist {options}`<br>
+`Options:`<br>
+`  -h        show this information`<br>
+`  -v        verbose (show dit/dah encoding)`<br>
+`  -m keymap use specified file as a keymap`<br>
+`  -t tone   specify tone frequency (default ?)`<br>
+<br>
 Ctrl-C to exit.
 
 ## Character Maps
