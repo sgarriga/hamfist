@@ -7,13 +7,13 @@ Right now characters are converted to a visual representation while I figure out
 ## Usage
 `
 Usage:
-./fist {options}
-Options:
-  -h        show this information
-  -v        verbose (show dit/dah encoding)
-  -m keymap use specified file as a keymap
-  -t tone   specify tone frequency (default ?)
-`
+./fist {options}<br>
+Options:<br>
+  -h        show this information<br>
+  -v        verbose (show dit/dah encoding)<br>
+  -m keymap use specified file as a keymap<br>
+  -t tone   specify tone frequency (default ?)<br>
+`<br>
 Ctrl-C to exit.
 
 ## Character Maps
