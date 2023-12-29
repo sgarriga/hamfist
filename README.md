@@ -1,5 +1,5 @@
 # hamfist
-Generate Morse Code (CW) tones from US keyboard input under Linux (i.e. a Raspberry Pi).
+Generate Morse Code (CW) tones from US keyboard input under Linux (i.e., a Raspberry Pi).
 
 At least that's the plan...<br>
 Right now characters are converted to a visual representation while I figure out the audio
@@ -27,9 +27,9 @@ The mapping file format is:
 2. `-` = dah
 3. `/` = letter-space
 4. `_` = word-space (normally only used to map the space character)
-- letter sequences are used to replace a character with a text string e.g. `#` can be converted to `HASH` by `# ^HASH` (note the caret)..
+- letter sequences are used to replace a character with a text string e.g. `#` can be converted to `HASH` by `# ^HASH` (note the caret).
 
-It is possible to use non-US keyboards using an alternate character map provided 
-1. the key generates a single-byte ASCII value.
-2. the Morse code sequence consists of eight (8) or fewer dits and dahs. If more are required specify -DMAX_SYMBOLS=16 or =32
+It is possible to use non-US keyboards using an alternate character map provided:
+1. the key generates a single-byte (8-bit) ASCII value.
+2. the Morse code sequence consists of eight (8) or fewer dits and dahs. If more are required, specify -DMAX_SYMBOLS=16 or =32 when you build
 
