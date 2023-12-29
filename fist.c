@@ -4,28 +4,40 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <ctype.h>
+#include <stdint.h>
 
 static bool debug = false;
 static bool echo = true;
-static unsigned char wpm = 20; // Words Per Minute
+static uint8_t wpm = 20; // Words Per Minute
 
-#define MAX_SYMBOLS 128
-#define MAX_PARTS 20
+#define SYMBOL_BITS 2
+#ifndef MAX_SYMBOLS
+#define MAX_SYMBOLS 8
+#endif
+#if MAX_SYMBOLS == 8
+#define SYMBOL_SET uint16_t
+#elif MAX_SYMBOLS == 16
+#define SYMBOL_SET uint32_t
+#elif MAX_SYMBOLS == 32
+#define SYMBOL_SET uint64_t
+#else
+#error MAX_SYMBOLS must be 8, 16 or 32
+#endif
 
 typedef struct { 
-	char key;
-	unsigned short symbol_map;
+	uint8_t key;
+	SYMBOL_SET symbol_map;
 } map_t;
-static map_t mapping[MAX_SYMBOLS];
-static unsigned char letters = 0;
+static map_t mapping[256];
+static uint8_t letters = 0;
 
 typedef struct { 
-	char key;
+	uint8_t key;
 	char *sequence;
 } sequence_t;
 
 static sequence_t *specials = NULL;
-static unsigned char specials_count = 0;
+static uint8_t specials_count = 0;
 
 static void fix_nl(char *s) {
 	char *p = strrchr(s, '\n');
@@ -37,23 +49,23 @@ static void setup_sound() {
 }
 
 #define u2d(a) (a * (60 / (50 * wpm)))
-static void tone(unsigned char units) {
+static void tone(uint8_t units) {
 	int duration = u2d(units);
 }
 
-static void silence(unsigned char units) {
+static void silence(uint8_t units) {
 	int duration = u2d(units);
 }
 
 
-static char *charmap = "char-map-us";
+static char *charmap = "/usr/share/fist/char-map";
 static void load_alphabet() {
 	FILE *cm;
 	int cc = 0;
 	char buffer[128];
 	char morse[20];
-	char symbols[16+2+1];
-	char binary_str[17];
+	char symbols[(SYMBOL_BITS*MAX_SYMBOLS)+2+1];
+	char binary_str[(SYMBOL_BITS*MAX_SYMBOLS)+1];
 
 	// read our keymap
 	cm = fopen(charmap, "r");
@@ -74,7 +86,7 @@ static void load_alphabet() {
 		if (buffer[2] != '^') {
 			mapping[letters].key = buffer[0];
 			symbols[0] = '\0';
-			for (char *c=&buffer[2]; *c && strlen(symbols) < 16; c++) {
+			for (char *c=&buffer[2]; *c && strlen(symbols) < (SYMBOL_BITS*MAX_SYMBOLS); c++) {
 				switch(*c) {
 					case '\n' :
 					case ' ' : break;
@@ -90,12 +102,12 @@ static void load_alphabet() {
 					default: printf("Invalid char-map entry \"%s\"\n", buffer);
 				}
 			}
-			while (strlen(symbols) < 16) {
+			while (strlen(symbols) < (SYMBOL_BITS*MAX_SYMBOLS)) {
 				strcat(symbols, "00");
 			}
 
-			sprintf(binary_str, "%16.16s", symbols);
-			mapping[letters].symbol_map = (unsigned short) strtol(binary_str, NULL, 2);
+			sprintf(binary_str, "%*.*s", (SYMBOL_BITS*MAX_SYMBOLS), (SYMBOL_BITS*MAX_SYMBOLS), symbols);
+			mapping[letters].symbol_map = (SYMBOL_SET) strtol(binary_str, NULL, 2);
 
 			letters++;
 		}
@@ -124,9 +136,9 @@ static void load_alphabet() {
 	}
 }
 
-static void dump_symbol(unsigned short symbol) {
+static void dump_symbol(SYMBOL_SET symbol) {
 	bool shift = false;
-	for (int k = 14; k > -1; k-=2) {
+	for (int k = (SYMBOL_BITS*MAX_SYMBOLS)-SYMBOL_BITS; k > -1; k-=SYMBOL_BITS) {
 		switch((symbol>> k) & 0b11)  {
 			case 0b00: k=-1;
 				   break;
@@ -145,9 +157,9 @@ static void dump_symbol(unsigned short symbol) {
 	}
 }
 
-static void play_symbol(unsigned short symbol) {
+static void play_symbol(SYMBOL_SET symbol) {
 	bool shift = false;
-	for (int k = 14; k > -1; k-=2) {
+	for (int k = (SYMBOL_BITS*MAX_SYMBOLS)-SYMBOL_BITS; k > -1; k-=SYMBOL_BITS) {
 		switch((symbol>> k) & 0b11)  {
 			case 0b00: k=-1;
 				   break;
@@ -245,6 +257,36 @@ static void play_string(char *s) {
 
 int main(int argc, char *argv[]) {
 	char buffer[265];
+
+	for (int i = 0; i < argc; i++) {
+		if (!strcmp(argv[i], "-m") && (i+1) < argc) {
+			charmap = argv[++i];
+		}
+		if (!strcmp(argv[i], "-w") && (i+1) < argc) {
+			int w = atoi(argv[++i]);
+			if (w > 0 && w <256)
+				wpm = 0;
+		}
+		if (!strcmp(argv[i], "-t") && (i+1) < argc) {
+			int t = atoi(argv[++i]);
+			if (t > 0 && t < 256) { // to do
+				int hz = 0;
+			}
+		}
+		if (!strcmp(argv[i], "-v")) {
+			echo = true;
+		}
+		if (!strcmp(argv[i], "-h")) {
+			printf("Usage:\n%s {options}\n", argv[0]);
+			printf("Options:\n");
+			printf("  -h        show this information\n");
+			printf("  -v        verbose (show dit/dah encoding)\n");
+			printf("  -m keymap use specified file as a keymap\n");
+			printf("  -t tone   specify tone frequency (default ?)\n");
+			exit(0);
+		}
+
+	}
 
 	load_alphabet();
 	if (debug) {
