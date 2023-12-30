@@ -5,10 +5,13 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <stdint.h>
+#include <math.h>
+#include "portaudio.h"
 
 static bool debug = false;
-static bool echo = true;
+static bool echo = false;
 static uint8_t wpm = 20; // Words Per Minute
+static uint16_t hz = 650; // dit/dah tone sine wave frequency in Hz
 
 #define SYMBOL_BITS 2
 #ifndef MAX_SYMBOLS
@@ -39,24 +42,120 @@ typedef struct {
 static sequence_t *specials = NULL;
 static uint8_t specials_count = 0;
 
+#define SAMPLE_RATE         44100
+#define TABLE_SIZE            200
+#define FRAMES_PER_BUFFER    1024
+static float sine[TABLE_SIZE]; /* sine wavetable */
+
+static PaStream *stream;
+
 static void fix_nl(char *s) {
 	char *p = strrchr(s, '\n');
 	if (p)
 		*p = '\0';
 }
 
+static void pa_error(PaError err) {
+	fprintf(stderr, "An error occurred while using the portaudio stream\n");
+	fprintf(stderr, "Error number: %d\n", err);
+	fprintf(stderr, "Error message: %s\n", Pa_GetErrorText(err));
+	// Print more information about the error.
+	if (err == paUnanticipatedHostError)
+	{
+		const PaHostErrorInfo *hostErrorInfo = Pa_GetLastHostErrorInfo();
+		fprintf(stderr, "Host API error = #%ld, hostApiType = %d\n", hostErrorInfo->errorCode, hostErrorInfo->hostApiType);
+		fprintf(stderr, "Host API error = %s\n", hostErrorInfo->errorText);
+	}
+	Pa_Terminate();
+	exit(1);
+}
+
+static void build_sinewave() {
+	for (int i=0; i<TABLE_SIZE; i++)
+	{
+		sine[i] = (float) sin(((double)i/(double)TABLE_SIZE) * M_PI * 2.);
+	}
+}
+
 static void setup_sound() {
+	PaStreamParameters outputParameters;
+	PaError err;
+
+	build_sinewave();
+
+	err = Pa_Initialize();
+	if (err != paNoError) 
+		pa_error(err);
+
+	outputParameters.device = Pa_GetDefaultOutputDevice(); /* default output device */
+	if (outputParameters.device == paNoDevice) {
+		fprintf(stderr,"Error: No default output device.\n");
+		exit(1);
+	}
+
+	outputParameters.channelCount = 2;       /* stereo output */
+	outputParameters.sampleFormat = paFloat32; /* 32 bit floating point output */
+	outputParameters.suggestedLatency = 0.050; // Pa_GetDeviceInfo(outputParameters.device)->defaultLowOutputLatency;
+	outputParameters.hostApiSpecificStreamInfo = NULL;
+
+	err = Pa_OpenStream(
+			&stream,
+			NULL, /* no input */
+			&outputParameters,
+			SAMPLE_RATE,
+			FRAMES_PER_BUFFER,
+			paClipOff,      /* we won't output out of range samples so don't bother clipping them */
+			NULL, /* no callback, use blocking API */
+			NULL); /* no callback, so no callback userData */
+	if (err != paNoError) {
+		fprintf(stderr,"Error: Cannot open stream.\n");
+		pa_error(err);
+	}
 }
 
 #define u2d(a) (a * (60 / (50 * wpm)))
 static void tone(uint8_t units) {
-	int duration = u2d(units);
+	int duration_ms = 1000 * u2d(units);
+	PaError err;
+	int left_phase = 0;
+	int right_phase = 0;
+	float buffer[FRAMES_PER_BUFFER][2]; /* stereo output buffer */
+	int bufferCount;
+
+	err = Pa_StartStream(stream);
+	if (err != paNoError) 
+		pa_error(err);
+
+	bufferCount = ((duration_ms * SAMPLE_RATE) / FRAMES_PER_BUFFER) / 1000;
+
+	for (int i=0; i < bufferCount; i++)
+	{
+		for (int j=0; j < FRAMES_PER_BUFFER; j++)
+		{
+			buffer[j][0] = sine[left_phase];  /* left */
+			buffer[j][1] = sine[right_phase];  /* right */
+			left_phase++;
+			if (left_phase >= TABLE_SIZE) 
+				left_phase -= TABLE_SIZE;
+			right_phase++;
+			if (right_phase >= TABLE_SIZE)
+				right_phase -= TABLE_SIZE;
+		}
+
+		err = Pa_WriteStream(stream, buffer, FRAMES_PER_BUFFER);
+		if (err != paNoError) 
+			pa_error(err);
+	}
+
+	err = Pa_StopStream(stream);
+	if (err != paNoError) 
+		pa_error(err);
 }
 
 static void silence(uint8_t units) {
-	int duration = u2d(units);
+	int duration_ms = 1000 * u2d(units);
+	Pa_Sleep(duration_ms);
 }
-
 
 static char *charmap = "/usr/share/fist/char-map";
 static void load_alphabet() {
@@ -257,6 +356,7 @@ static void play_string(char *s) {
 
 int main(int argc, char *argv[]) {
 	char buffer[265];
+	PaError err;
 
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "-m") && (i+1) < argc) {
@@ -265,12 +365,12 @@ int main(int argc, char *argv[]) {
 		if (!strcmp(argv[i], "-w") && (i+1) < argc) {
 			int w = atoi(argv[++i]);
 			if (w > 0 && w <256)
-				wpm = 0;
+				wpm = w;
 		}
 		if (!strcmp(argv[i], "-t") && (i+1) < argc) {
 			int t = atoi(argv[++i]);
-			if (t > 0 && t < 256) { // to do
-				int hz = 0;
+			if (t > 249 && t < 1001) {
+				hz = t;
 			}
 		}
 		if (!strcmp(argv[i], "-v")) {
@@ -282,11 +382,14 @@ int main(int argc, char *argv[]) {
 			printf("  -h        show this information\n");
 			printf("  -v        verbose (show dit/dah encoding)\n");
 			printf("  -m keymap use specified file as a keymap\n");
-			printf("  -t tone   specify tone frequency (default ?)\n");
+			printf("  -t tone   specify tone frequency between 1000Hz and 250Hz (default 650Hz)\n");
+			printf("  -w WPM    specify words-per-minute 1..255 (default 50)\n");
 			exit(0);
 		}
 
 	}
+
+	setup_sound();
 
 	load_alphabet();
 	if (debug) {
@@ -301,4 +404,12 @@ int main(int argc, char *argv[]) {
 		play_string(buffer);
 		printf("\n");
 	}
+
+	err = Pa_CloseStream(stream);
+	if (err != paNoError) 
+		pa_error(err);
+
+	Pa_Terminate();
+
+
 }

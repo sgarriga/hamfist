@@ -1,4 +1,10 @@
 # CMAKE+=-DMAX_SYMBOLS=16
+
+CC=gcc
+CFLAGS=-I ../portaudio/include
+LDFLAGS=-L ../portaudio/lib/.libs
+LDLIBS=-l:libportaudio.a -lm -lpthread
+
 all: fist
 
 install: fist
