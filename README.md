@@ -1,10 +1,17 @@
 # hamfist
-Generate Morse Code (CW) tones from US keyboard input under Linux (i.e., a Raspberry Pi).
+Generate Morse Code (CW) tones from US keyboard input under Linux (i.e., a Raspberry Pi). It might work on WSL2 if you have managed to get PulseAudio to work - but I have not.
 
-At least that's the plan...<br>
-Right now characters are converted to a visual representation while I figure out the audio
+AUDIO UNTESTED AT THIS TIME!
 
-This application requires PortAudio (https://github.com/PortAudio/portaudio) to build.
+This application uses PortAudio (https://github.com/PortAudio/portaudio) to generate sounds. If you already have it installed, you <i>might</i> want to tweak the `Makefile`.
+
+## Building
+Building is straightforward, the `Makefile` pulls dowm the required Github repository for PortAudio.
+
+`git clone (https://github.com/PortAudio/portaudio`<br>
+`cd hamfist`<br>
+`make`<br>
+<br>
 
 ## Usage
 `Usage:`<br>
