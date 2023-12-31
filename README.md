@@ -8,7 +8,7 @@ This application uses PortAudio (https://github.com/PortAudio/portaudio) to gene
 ## Building
 Building is straightforward, the `Makefile` pulls dowm the required Github repository for PortAudio.
 
-`git clone (https://github.com/PortAudio/portaudio`<br>
+`git clone (https://github.com/sgarriga/hamfist`<br>
 `cd hamfist`<br>
 `make`<br>
 <br>
