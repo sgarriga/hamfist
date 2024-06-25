@@ -8,10 +8,13 @@
 #include <math.h>
 #include <alsa/error.h>
 #include <unistd.h>
-//#include <fcntl.h>
+#include <signal.h>
 #include "portaudio.h"
 
-static bool die = false;
+static volatile sig_atomic_t die = false;
+void interruptHdl(int dummy) {
+    die = true;
+}
 
 static bool debug = false;
 static bool echo = false;
@@ -408,6 +411,8 @@ int main(int argc, char *argv[]) {
 	char buffer[265];
 	PaError err;
 
+        signal(SIGINT, interruptHdl);
+
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "-m") && (i+1) < argc) {
 			charmap = argv[++i];
@@ -453,12 +458,15 @@ int main(int argc, char *argv[]) {
 	}
 
         printf("Type your message and hit Enter to convert.\n");
+        printf("(Ctrl+C to quit)\n");
 	while(!die) {
 		fgets(buffer, sizeof(buffer), stdin);
 		fix_nl(buffer);
 		play_string(buffer);
 		printf("\n");
 	}
+
+        printf("Exiting\n");
 
 	err = Pa_CloseStream(stream);
 	if (err != paNoError) 
