@@ -6,7 +6,7 @@ AUDIO UNTESTED AT THIS TIME!
 This application uses PortAudio (https://github.com/PortAudio/portaudio) to generate sounds. If you already have it installed, you <i>might</i> want to tweak the `Makefile`.
 
 ## Building
-Building is straightforward, the `Makefile` pulls dowm the required Github repository for PortAudio.
+Building is straightforward, the `Makefile` pulls down the required Github repository for PortAudio.
 
 `git clone (https://github.com/sgarriga/hamfist`<br>
 `cd hamfist`<br>

@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <stdint.h>
 #include <math.h>
+#include <alsa/error.h>
 #include "portaudio.h"
 
 static bool debug = false;
@@ -42,12 +43,21 @@ typedef struct {
 static sequence_t *specials = NULL;
 static uint8_t specials_count = 0;
 
-#define SAMPLE_RATE         44100
-#define TABLE_SIZE            200
-#define FRAMES_PER_BUFFER    1024
-static float sine[TABLE_SIZE]; /* sine wavetable */
+static uint32_t sample_rate = 44100;
+#define TABLE_SIZE            256
+#define FRAMES_PER_BUFFER     64
+typedef struct
+{
+	float   sine[TABLE_SIZE];
+	uint8_t phase;
+} paTestData;
+
+static paTestData data;
 
 static PaStream *stream;
+static PaStreamParameters outputParameters;
+
+void alsa_err(const char *file, int line, const char *function, int err, const char *fmt,...) { }
 
 static void fix_nl(char *s) {
 	char *p = strrchr(s, '\n');
@@ -70,16 +80,46 @@ static void pa_error(PaError err) {
 	exit(1);
 }
 
+static int patestCallback( const void *inputBuffer, void *outputBuffer,
+		unsigned long framesPerBuffer,
+		const PaStreamCallbackTimeInfo* timeInfo,
+		PaStreamCallbackFlags statusFlags,
+		void *userData )
+{
+	paTestData *data = (paTestData*)userData;
+	float *out = (float*)outputBuffer;
+	unsigned long i;
+
+	(void) timeInfo; /* Prevent unused variable warnings. */
+	(void) statusFlags;
+	(void) inputBuffer;
+	for( i=0; i<framesPerBuffer; i++ )
+	{
+		*out++ = data->sine[data->phase];
+		*out++ = data->sine[data->phase];
+		data->phase++;
+	}
+
+	return paContinue;
+}
+
 static void build_sinewave() {
 	for (int i=0; i<TABLE_SIZE; i++)
 	{
-		sine[i] = (float) sin(((double)i/(double)TABLE_SIZE) * M_PI * 2.);
+		data.sine[i] = (float) sin(((double)i/(double)TABLE_SIZE) * M_PI * 2.0);
 	}
+	data.phase = 0;
+}
+
+static void StreamFinished( void* userData )
+{
+	;
 }
 
 static void setup_sound() {
-	PaStreamParameters outputParameters;
 	PaError err;
+
+        snd_lib_error_set_handler(&alsa_err); // suppress ALSA warnings
 
 	build_sinewave();
 
@@ -95,57 +135,38 @@ static void setup_sound() {
 
 	outputParameters.channelCount = 2;       /* stereo output */
 	outputParameters.sampleFormat = paFloat32; /* 32 bit floating point output */
-	outputParameters.suggestedLatency = 0.050; // Pa_GetDeviceInfo(outputParameters.device)->defaultLowOutputLatency;
+	outputParameters.suggestedLatency = Pa_GetDeviceInfo(outputParameters.device)->defaultLowOutputLatency;
 	outputParameters.hostApiSpecificStreamInfo = NULL;
 
 	err = Pa_OpenStream(
 			&stream,
 			NULL, /* no input */
 			&outputParameters,
-			SAMPLE_RATE,
+			sample_rate,
 			FRAMES_PER_BUFFER,
-			paClipOff,      /* we won't output out of range samples so don't bother clipping them */
-			NULL, /* no callback, use blocking API */
-			NULL); /* no callback, so no callback userData */
+			paClipOff,
+			patestCallback,
+			&data);
 	if (err != paNoError) {
 		fprintf(stderr,"Error: Cannot open stream.\n");
 		pa_error(err);
 	}
+
+        snd_lib_error_set_handler(NULL); // resume ALSA warnings
 }
 
-#define u2d(a) (a * (60 / (50 * wpm)))
+static float u2d = 60.0 / (50.0 * 20.0);
 static void tone(uint8_t units) {
-	int duration_ms = 1000 * u2d(units);
+	uint32_t duration_ms = (uint32_t) (1000.0 * units * u2d);
 	PaError err;
-	int left_phase = 0;
-	int right_phase = 0;
-	float buffer[FRAMES_PER_BUFFER][2]; /* stereo output buffer */
-	int bufferCount;
+
+	// printf("Tone duration %d ms\n", duration_ms);
 
 	err = Pa_StartStream(stream);
 	if (err != paNoError) 
 		pa_error(err);
 
-	bufferCount = ((duration_ms * SAMPLE_RATE) / FRAMES_PER_BUFFER) / 1000;
-
-	for (int i=0; i < bufferCount; i++)
-	{
-		for (int j=0; j < FRAMES_PER_BUFFER; j++)
-		{
-			buffer[j][0] = sine[left_phase];  /* left */
-			buffer[j][1] = sine[right_phase];  /* right */
-			left_phase++;
-			if (left_phase >= TABLE_SIZE) 
-				left_phase -= TABLE_SIZE;
-			right_phase++;
-			if (right_phase >= TABLE_SIZE)
-				right_phase -= TABLE_SIZE;
-		}
-
-		err = Pa_WriteStream(stream, buffer, FRAMES_PER_BUFFER);
-		if (err != paNoError) 
-			pa_error(err);
-	}
+	Pa_Sleep(duration_ms);
 
 	err = Pa_StopStream(stream);
 	if (err != paNoError) 
@@ -153,7 +174,7 @@ static void tone(uint8_t units) {
 }
 
 static void silence(uint8_t units) {
-	int duration_ms = 1000 * u2d(units);
+	uint32_t duration_ms = (uint32_t) (1000.0 * units * u2d);
 	Pa_Sleep(duration_ms);
 }
 
@@ -376,10 +397,10 @@ int main(int argc, char *argv[]) {
 		if (!strcmp(argv[i], "-v")) {
 			echo = true;
 		}
-		if (!strcmp(argv[i], "-h")) {
+		if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
 			printf("Usage:\n%s {options}\n", argv[0]);
 			printf("Options:\n");
-			printf("  -h        show this information\n");
+			printf("  -h/--help show this information\n");
 			printf("  -v        verbose (show dit/dah encoding)\n");
 			printf("  -m keymap use specified file as a keymap\n");
 			printf("  -t tone   specify tone frequency between 1000Hz and 250Hz (default 650Hz)\n");
@@ -388,6 +409,10 @@ int main(int argc, char *argv[]) {
 		}
 
 	}
+
+	u2d = 60.0 / (50.0 * wpm);
+	sample_rate = (int) ((float) TABLE_SIZE * (float) hz);
+	printf("Unit = %f, Rate = %d WPM, Frequency = %d Hz\n", u2d, wpm, hz);
 
 	setup_sound();
 

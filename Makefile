@@ -12,10 +12,14 @@ CFLAGS=-I ./portaudio/include
 LDFLAGS=-L ./portaudio/lib/.libs
 
 # libportaudio is statically linked to avoid installing
-LDLIBS=-l:libportaudio.a -lm -lpthread
+LDLIBS=-l:libportaudio.a -lm -lasound -lpthread
 
 .PHONY: all
-all: portaudio fist
+all: alsa portaudio fist
+
+.PHONY: alsa
+alsa:
+	if [ ! -f "/usr/include/asoundlib.h" ]; then sudo apt install libasound-dev; fi
 
 .PHONY: portaudio
 portaudio: 
