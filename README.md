@@ -9,7 +9,8 @@ Building is straightforward, the `Makefile` pulls down the required Github repos
 `git clone https://github.com/sgarriga/hamfist.git`<br>
 `cd hamfist`<br>
 `make`<br>
-<br>
+Enter sudo password if prompted<br>
+`make install`
 
 ## Usage
 `Usage:`<br>
