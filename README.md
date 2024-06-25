@@ -4,7 +4,7 @@ Generate Morse Code (CW) tones from US keyboard input under Linux (i.e., a Raspb
 This application uses PortAudio (https://github.com/PortAudio/portaudio) to generate sounds. If you already have it installed, you <i>might</i> want to tweak the `Makefile`.
 
 ## Building
-Building is straightforward, the `Makefile` pulls down the required Github repository for PortAudio and the ALSA libraru if required (it will prompt for the sudo password).
+Building is straightforward, the `Makefile` pulls down the required Github repository for PortAudio and the ALSA library if required (it will prompt for the `sudo` password if it needs to).
 
 `git clone (https://github.com/sgarriga/hamfist`<br>
 `cd hamfist`<br>
