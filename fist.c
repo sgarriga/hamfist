@@ -7,7 +7,11 @@
 #include <stdint.h>
 #include <math.h>
 #include <alsa/error.h>
+#include <unistd.h>
+//#include <fcntl.h>
 #include "portaudio.h"
+
+static bool die = false;
 
 static bool debug = false;
 static bool echo = false;
@@ -58,6 +62,27 @@ static PaStream *stream;
 static PaStreamParameters outputParameters;
 
 void alsa_err(const char *file, int line, const char *function, int err, const char *fmt,...) { }
+
+static int stderr_fd;
+static fpos_t stderr_pos;
+
+static void mute_stderr(void)
+{
+  fflush(stderr);
+  fgetpos(stderr, &stderr_pos);
+  stderr_fd = dup(fileno(stderr));
+  freopen("/dev/null", "w", stderr);
+}
+
+static void unmute_stderr(void)
+{
+  fflush(stderr);
+  dup2(stderr_fd, fileno(stderr));
+  close(stderr_fd);
+  clearerr(stderr);
+  fsetpos(stderr, &stderr_pos);
+}
+
 
 static void fix_nl(char *s) {
 	char *p = strrchr(s, '\n');
@@ -118,6 +143,9 @@ static void StreamFinished( void* userData )
 
 static void setup_sound() {
 	PaError err;
+        int true_se, null_se;
+
+        mute_stderr();
 
         snd_lib_error_set_handler(&alsa_err); // suppress ALSA warnings
 
@@ -147,6 +175,7 @@ static void setup_sound() {
 			paClipOff,
 			patestCallback,
 			&data);
+        unmute_stderr();
 	if (err != paNoError) {
 		fprintf(stderr,"Error: Cannot open stream.\n");
 		pa_error(err);
@@ -423,7 +452,8 @@ int main(int argc, char *argv[]) {
 		dump_specials();
 	}
 
-	while(true) {
+        printf("Type your message and hit Enter to convert.\n");
+	while(!die) {
 		fgets(buffer, sizeof(buffer), stdin);
 		fix_nl(buffer);
 		play_string(buffer);
