@@ -6,7 +6,7 @@ This application uses PortAudio (https://github.com/PortAudio/portaudio) to gene
 ## Building
 Building is straightforward, the `Makefile` pulls down the required Github repository for PortAudio and the ALSA library if required (it will prompt for the `sudo` password if it needs to).
 
-`git clone (https://github.com/sgarriga/hamfist`<br>
+`git clone https://github.com/sgarriga/hamfist.git`<br>
 `cd hamfist`<br>
 `make`<br>
 <br>
