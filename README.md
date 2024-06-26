@@ -16,16 +16,17 @@ Enter sudo password if prompted<br>
 `Usage:`<br>
 `fist {options}`<br>
 `Options:`<br>
-`  -h        show this information`<br>
-`  -v        verbose (show dit/dah encoding)`<br>
-`  -m keymap use specified file as a keymap`<br>
-`  -t tone   specify tone frequency between 1000Hz and 250Hz (default 650Hz)`<br>
-`  -w WPM    specify words-per-minute 1..255 (default 50)`<br>
+`  -h/--help  show this information`<br>
+`  -m keymap  use specified file as a keymap`<br>
+`  -p         output piped input rather than prompting for message`<br>
+`  -s string  output string rather than prompting for message (overrides -p)`<br>
+`  -t tone    specify tone frequency (Hz) between 250 and 1000 (default 650)`<br>
+`  -v         verbose (show dit/dah encoding)`<br>
+`  -w WPM     specify words-per-minute 1..255 (default 20)`<br>
 <br>
-Ctrl-C to exit.
 
 ## Character Maps
-The program uses a default character map file `/usr/share/fist/char-map`. By default a standard US keyboard is assumed (the file is a link to `/usr/share/fist/char-map-us`), but an alternate default may be specified by modifying the link or by specifying an alternate mapping file using the `-m` option.
+Unless an alternate is specified with the `-m` option, the `fist` program uses the character map file `/usr/share/fist/char-map`. By default a standard US keyboard is assumed (and the file is actually a link to `/usr/share/fist/char-map-us`).
 
 The mapping file format is:
 - lines starting `##` are comments
