@@ -11,16 +11,25 @@
 #include <signal.h>
 #include "portaudio.h"
 
+#define BUFF_MAX 4096
+// limit to number of chars on a command line
+
+// CTRL-C handling
 static volatile sig_atomic_t die = false;
 void interruptHdl(int dummy) {
-    die = true;
+	die = true;
 }
 
 static bool debug = false;
+static bool piped = false;
 static bool echo = false;
-static uint8_t wpm = 20; // Words Per Minute
-static uint16_t hz = 650; // dit/dah tone sine wave frequency in Hz
 
+// Morse handling stuff
+static uint8_t wpm = 20; // Words Per Minute
+static uint16_t dit_ms = 0;    // calculated later
+static uint16_t hz = 650; // dit/dah tone sine wave frequency in Hz
+static char *charmap = "/usr/share/fist/char-map";
+static char *message = NULL;
 #define SYMBOL_BITS 2
 #ifndef MAX_SYMBOLS
 #define MAX_SYMBOLS 8
@@ -39,7 +48,7 @@ typedef struct {
 	uint8_t key;
 	SYMBOL_SET symbol_map;
 } map_t;
-static map_t mapping[256];
+static map_t mapping[UINT8_MAX];
 static uint8_t letters = 0;
 
 typedef struct { 
@@ -50,8 +59,9 @@ typedef struct {
 static sequence_t *specials = NULL;
 static uint8_t specials_count = 0;
 
+// PortAudio stuff
 static uint32_t sample_rate = 44100;
-#define TABLE_SIZE            256
+#define TABLE_SIZE            UINT8_MAX
 #define FRAMES_PER_BUFFER     64
 typedef struct
 {
@@ -64,35 +74,38 @@ static paTestData data;
 static PaStream *stream;
 static PaStreamParameters outputParameters;
 
+// ALSA error handler - to supress ALSA noise on stderr
 void alsa_err(const char *file, int line, const char *function, int err, const char *fmt,...) { }
 
+// Jack also causes noise on stderr, so we will have to suppress all errors for a while
 static int stderr_fd;
 static fpos_t stderr_pos;
 
 static void mute_stderr(void)
 {
-  fflush(stderr);
-  fgetpos(stderr, &stderr_pos);
-  stderr_fd = dup(fileno(stderr));
-  freopen("/dev/null", "w", stderr);
+	fflush(stderr);
+	fgetpos(stderr, &stderr_pos);
+	stderr_fd = dup(fileno(stderr));
+	freopen("/dev/null", "w", stderr);
 }
 
 static void unmute_stderr(void)
 {
-  fflush(stderr);
-  dup2(stderr_fd, fileno(stderr));
-  close(stderr_fd);
-  clearerr(stderr);
-  fsetpos(stderr, &stderr_pos);
+	fflush(stderr);
+	dup2(stderr_fd, fileno(stderr));
+	close(stderr_fd);
+	clearerr(stderr);
+	fsetpos(stderr, &stderr_pos);
 }
 
-
+// strip trailing newline from text string
 static void fix_nl(char *s) {
 	char *p = strrchr(s, '\n');
 	if (p)
 		*p = '\0';
 }
 
+// print out the stuff the PortAudio folks do in their examples
 static void pa_error(PaError err) {
 	fprintf(stderr, "An error occurred while using the portaudio stream\n");
 	fprintf(stderr, "Error number: %d\n", err);
@@ -108,7 +121,8 @@ static void pa_error(PaError err) {
 	exit(1);
 }
 
-static int patestCallback( const void *inputBuffer, void *outputBuffer,
+// simplified version of example
+static int paCallback( const void *inputBuffer, void *outputBuffer,
 		unsigned long framesPerBuffer,
 		const PaStreamCallbackTimeInfo* timeInfo,
 		PaStreamCallbackFlags statusFlags,
@@ -131,6 +145,7 @@ static int patestCallback( const void *inputBuffer, void *outputBuffer,
 	return paContinue;
 }
 
+// simplified version of example
 static void build_sinewave() {
 	for (int i=0; i<TABLE_SIZE; i++)
 	{
@@ -144,13 +159,13 @@ static void StreamFinished( void* userData )
 	;
 }
 
+// again, based on example
 static void setup_sound() {
 	PaError err;
-        int true_se, null_se;
+	int true_se, null_se;
 
-        mute_stderr();
-
-        snd_lib_error_set_handler(&alsa_err); // suppress ALSA warnings
+	snd_lib_error_set_handler(&alsa_err); // suppress ALSA warnings
+	mute_stderr(); // to stop Jack errors - this is a bit extreme!
 
 	build_sinewave();
 
@@ -158,8 +173,9 @@ static void setup_sound() {
 	if (err != paNoError) 
 		pa_error(err);
 
-	outputParameters.device = Pa_GetDefaultOutputDevice(); /* default output device */
+	outputParameters.device = Pa_GetDefaultOutputDevice();
 	if (outputParameters.device == paNoDevice) {
+		unmute_stderr();
 		fprintf(stderr,"Error: No default output device.\n");
 		exit(1);
 	}
@@ -176,42 +192,40 @@ static void setup_sound() {
 			sample_rate,
 			FRAMES_PER_BUFFER,
 			paClipOff,
-			patestCallback,
+			paCallback,
 			&data);
-        unmute_stderr();
+	unmute_stderr();
 	if (err != paNoError) {
 		fprintf(stderr,"Error: Cannot open stream.\n");
 		pa_error(err);
 	}
 
-        snd_lib_error_set_handler(NULL); // resume ALSA warnings
+	snd_lib_error_set_handler(NULL); // resume ALSA warnings
 }
 
-static float u2d = 60.0 / (50.0 * 20.0);
-static void tone(uint8_t units) {
-	uint32_t duration_ms = (uint32_t) (1000.0 * units * u2d);
-	PaError err;
+#define silence(a) pa_sustain(a)
 
-	// printf("Tone duration %d ms\n", duration_ms);
+// allow current note or silence to play for the alloted number of time units
+static void pa_sustain(uint8_t units) {
+	uint32_t duration_ms = (uint32_t) (units * dit_ms);
+	Pa_Sleep(duration_ms);
+}
+
+static void tone(uint8_t units) {
+	PaError err;
 
 	err = Pa_StartStream(stream);
 	if (err != paNoError) 
 		pa_error(err);
 
-	Pa_Sleep(duration_ms);
+	pa_sustain(units);
 
 	err = Pa_StopStream(stream);
 	if (err != paNoError) 
 		pa_error(err);
 }
 
-static void silence(uint8_t units) {
-	uint32_t duration_ms = (uint32_t) (1000.0 * units * u2d);
-	Pa_Sleep(duration_ms);
-}
-
-static char *charmap = "/usr/share/fist/char-map";
-static void load_alphabet() {
+static void load_charmap() {
 	FILE *cm;
 	int cc = 0;
 	char buffer[128];
@@ -346,7 +360,7 @@ static void play_symbol(SYMBOL_SET symbol) {
 	}
 }
 
-static void dump_alphabet1() {
+static void dump_charmap1() {
 	for (int i = 0; i < letters; i++) {
 		printf("%c ", mapping[i].key);
 		dump_symbol(mapping[i].symbol_map);
@@ -355,7 +369,7 @@ static void dump_alphabet1() {
 
 }
 
-static void dump_alphabet2() {
+static void dump_charmap2() {
 	for (int i = 0; i < letters; i++)
 		printf("%c %4x\n", mapping[i].key, mapping[i].symbol_map);
 
@@ -408,10 +422,10 @@ static void play_string(char *s) {
 }
 
 int main(int argc, char *argv[]) {
-	char buffer[265];
+	char buffer[BUFF_MAX];
 	PaError err;
 
-        signal(SIGINT, interruptHdl);
+	signal(SIGINT, interruptHdl);
 
 	for (int i = 0; i < argc; i++) {
 		if (!strcmp(argv[i], "-m") && (i+1) < argc) {
@@ -431,48 +445,66 @@ int main(int argc, char *argv[]) {
 		if (!strcmp(argv[i], "-v")) {
 			echo = true;
 		}
+		if (!strcmp(argv[i], "-s")) {
+			message=argv[++i];
+		}
+		if (!strcmp(argv[i], "-p")) {
+			piped = true;
+		}
 		if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
 			printf("Usage:\n%s {options}\n", argv[0]);
 			printf("Options:\n");
-			printf("  -h/--help show this information\n");
-			printf("  -v        verbose (show dit/dah encoding)\n");
-			printf("  -m keymap use specified file as a keymap\n");
-			printf("  -t tone   specify tone frequency between 1000Hz and 250Hz (default 650Hz)\n");
-			printf("  -w WPM    specify words-per-minute 1..255 (default 50)\n");
+			printf("  -h/--help  show this information\n");
+			printf("  -m keymap  use specified file as a keymap\n");
+			printf("  -p         output piped input rather than prompting for message\n");
+			printf("  -s string  output string rather than prompting for message (overrides -p)\n");
+			printf("  -t tone    specify tone frequency (Hz) between 250 and 1000 (default 650)\n");
+			printf("  -v         verbose (show dit/dah encoding)\n");
+			printf("  -w WPM     specify words-per-minute 1..255 (default 20)\n");
 			exit(0);
 		}
 
 	}
 
-	u2d = 60.0 / (50.0 * wpm);
-	sample_rate = (int) ((float) TABLE_SIZE * (float) hz);
-	printf("Unit = %f, Rate = %d WPM, Frequency = %d Hz\n", u2d, wpm, hz);
-
+	dit_ms = (uint16_t) (1000.0 * 60.0 / (50.0 * wpm));
+	sample_rate = (uint32_t) ((float) TABLE_SIZE * (float) hz);
 	setup_sound();
 
-	load_alphabet();
+	load_charmap();
 	if (debug) {
-		dump_alphabet1();
-		dump_alphabet2();
+		dump_charmap1();
+		dump_charmap2();
 		dump_specials();
 	}
 
-        printf("Type your message and hit Enter to convert.\n");
-        printf("(Ctrl+C to quit)\n");
-	while(!die) {
-		fgets(buffer, sizeof(buffer), stdin);
-		fix_nl(buffer);
-		play_string(buffer);
+	if (!message) {
+		if (!piped) {
+			printf("Dit = %d ms, Rate = %d WPM, Frequency = %d Hz\n", dit_ms, wpm, hz);
+
+			printf("Type your message and hit Enter to convert.\n");
+			printf("(Ctrl+C to quit)\n");
+		}
+		while(!die || piped) {
+			fgets(buffer, sizeof(buffer), stdin);
+			fix_nl(buffer);
+			play_string(buffer);
+			if (piped)
+				break;
+			printf("\n");
+		}
+		if (!piped) {
+			printf("Exiting\n");
+		}
+	}
+	else {
+		play_string(message);
 		printf("\n");
 	}
-
-        printf("Exiting\n");
 
 	err = Pa_CloseStream(stream);
 	if (err != paNoError) 
 		pa_error(err);
 
 	Pa_Terminate();
-
-
+	exit(0);
 }
