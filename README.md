@@ -43,3 +43,4 @@ It is possible to use non-US keyboards using an alternate character map provided
 1. the key generates a single-byte (8-bit) ASCII value.
 2. the Morse code sequence consists of eight (8) or fewer dits and dahs. If more are required, specify -DMAX_SYMBOLS=16 or =32 when you build
 
+An alternate `fist-us` executable is also built - this uses a hard-coded mapping of US keys.

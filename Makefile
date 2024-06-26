@@ -15,7 +15,7 @@ LDFLAGS=-L ./portaudio/lib/.libs
 LDLIBS=-l:libportaudio.a -lm -lasound -lpthread
 
 .PHONY: all
-all: alsa portaudio fist
+all: alsa portaudio fist fist-us
 
 .PHONY: alsa
 alsa:
@@ -28,7 +28,11 @@ portaudio:
 
 .PHONY: clean
 clean: 
-	rm -rf fist portaudio
+	rm -rf fist fist-us
+
+.PHONY: clean-all
+clean-all: 
+	rm -rf fist fist-us portaudio
 
 .PHONY: install
 install: fist
@@ -36,3 +40,7 @@ install: fist
 	if [ ! -d "/usr/share/fist" ]; then sudo mkdir /usr/share/fist ; fi
 	sudo cp char-map-* /usr/share/fist/
 	sudo ln -sf /usr/share/fist/char-map-us /usr/share/fist/char-map
+
+# build a variant with a fixed mapping
+fist-us: fist.c
+	$(CC) -o $@ fist.c $(CFLAGS) -D FIST840  $(LDFLAGS) $(LDLIBS)

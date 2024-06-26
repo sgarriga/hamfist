@@ -28,12 +28,15 @@ static bool echo = false;
 static uint8_t wpm = 20; // Words Per Minute
 static uint16_t dit_ms = 0;    // calculated later
 static uint16_t hz = 650; // dit/dah tone sine wave frequency in Hz
-static char *charmap = "/usr/share/fist/char-map";
 static char *message = NULL;
+
 #define SYMBOL_BITS 2
 #ifndef MAX_SYMBOLS
 #define MAX_SYMBOLS 8
 #endif
+
+#ifndef FIST840
+static char *charmap = "/usr/share/fist/char-map";
 #if MAX_SYMBOLS == 8
 #define SYMBOL_SET uint16_t
 #elif MAX_SYMBOLS == 16
@@ -43,21 +46,73 @@ static char *message = NULL;
 #else
 #error MAX_SYMBOLS must be 8, 16 or 32
 #endif
+#else
+#define SYMBOL_SET uint16_t
+#endif
 
 typedef struct { 
 	uint8_t key;
 	SYMBOL_SET symbol_map;
 } map_t;
-static map_t mapping[UINT8_MAX];
-static uint8_t letters = 0;
 
 typedef struct { 
 	uint8_t key;
 	char *sequence;
 } sequence_t;
 
+#ifndef FIST840
+static map_t mapping[UINT8_MAX];
+static uint8_t letters = 0;
+
 static sequence_t *specials = NULL;
 static uint8_t specials_count = 0;
+#else
+static const map_t mapping[] = {{'A', 0x6000}, {'B', 0x9500},
+                                {'C', 0x9900}, {'D', 0x9400},
+                                {'E', 0x4000}, {'F', 0x5900},
+                                {'G', 0xa400}, {'H', 0x5500},
+                                {'I', 0x5000}, {'J', 0x6a00},
+                                {'K', 0x9800}, {'L', 0x6500},
+                                {'M', 0xa000}, {'N', 0x9000},
+                                {'O', 0xa800}, {'P', 0x6900},
+                                {'Q', 0xa600}, {'R', 0x6400},
+                                {'S', 0x5400}, {'T', 0x8000},
+                                {'U', 0x5800}, {'V', 0x5600},
+                                {'W', 0x6800}, {'X', 0x9600},
+                                {'Y', 0x9a00}, {'Z', 0xa500},
+                                {'0', 0xaa80}, {'1', 0x6a80},
+                                {'2', 0x5a80}, {'3', 0x5680},
+                                {'4', 0x5580}, {'5', 0x5540},
+                                {'6', 0x9540}, {'7', 0xa540},
+                                {'8', 0xa940}, {'9', 0xaa40},
+                                {'"', 0xe000}, {'&', 0x6540},
+                                {'\'', 0x6a90}, {'@', 0x6990},
+                                {')', 0x9a60}, {'(', 0x9a40},
+                                {':', 0xa950}, {',', 0xa5a0},
+                                {'=', 0x9580}, {'!', 0x99a0},
+                                {'.', 0x6660}, {'-', 0x9560},
+                                {'*', 0x9600}, {'+', 0x6640},
+                                {'"', 0x6590}, {'?', 0x5a50},
+                                {'/', 0x9640}, {'\\', 0x6580}};
+static uint8_t letters = 56;
+
+static sequence_t specials[] = {{'%', "0/0"},
+                                {'~', "TILDE"},
+                                {'#', "HASH"},
+                                {'$', "USD"},
+                                {'^', "CARET"},
+                                {'_', "UNDERSCORE"},
+                                {'{', "B(_"},
+                                {'}', "_)B"},
+                                {'|', "BAR"},
+                                {'<', "LT"},
+                                {'>', "GT"},
+                                {'`', "'"},
+                                {'[', "S(_"},
+                                {']', "_)S"},
+                                {';', ".,"}};
+static uint8_t specials_count = 15;
+#endif
 
 // PortAudio stuff
 static uint32_t sample_rate = 44100;
@@ -225,6 +280,7 @@ static void tone(uint8_t units) {
 		pa_error(err);
 }
 
+#ifndef FIST840
 static void load_charmap() {
 	FILE *cm;
 	int cc = 0;
@@ -301,6 +357,7 @@ static void load_charmap() {
 		}
 	}
 }
+#endif
 
 static void dump_symbol(SYMBOL_SET symbol) {
 	bool shift = false;
@@ -428,9 +485,11 @@ int main(int argc, char *argv[]) {
 	signal(SIGINT, interruptHdl);
 
 	for (int i = 0; i < argc; i++) {
+#ifndef FIST840
 		if (!strcmp(argv[i], "-m") && (i+1) < argc) {
 			charmap = argv[++i];
 		}
+#endif
 		if (!strcmp(argv[i], "-w") && (i+1) < argc) {
 			int w = atoi(argv[++i]);
 			if (w > 0 && w <256)
@@ -455,7 +514,9 @@ int main(int argc, char *argv[]) {
 			printf("Usage:\n%s {options}\n", argv[0]);
 			printf("Options:\n");
 			printf("  -h/--help  show this information\n");
+#ifndef FIST840
 			printf("  -m keymap  use specified file as a keymap\n");
+#endif
 			printf("  -p         output piped input rather than prompting for message\n");
 			printf("  -s string  output string rather than prompting for message (overrides -p)\n");
 			printf("  -t tone    specify tone frequency (Hz) between 250 and 1000 (default 650)\n");
@@ -470,7 +531,9 @@ int main(int argc, char *argv[]) {
 	sample_rate = (uint32_t) ((float) TABLE_SIZE * (float) hz);
 	setup_sound();
 
+#ifndef FIST840
 	load_charmap();
+#endif
 	if (debug) {
 		dump_charmap1();
 		dump_charmap2();
